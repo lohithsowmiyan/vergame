@@ -1,0 +1,16 @@
+langchain
+langchain-huggingface
+torch
+matplotlib
+jinja2>=3.1.0
+git+https://github.com/huggingface/transformers
+accelerate
+bitsandbytes
+safetensors
+sentencepiece
+langchain-google-genai
+langchain-openai
+python-dotenv
+imgcat
+pillow
+einops

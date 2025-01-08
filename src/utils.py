@@ -491,7 +491,8 @@ def activeLearning(self:DATA, score=lambda B,R: B-R, generate=None, faster=True 
      done     += [top]
      done      = ranked(done)
    return done
-  todo, done = self.rows[the.label:], ranked(self.rows[:the.label])
+ 
+ todo, done = self.rows[the.label:], ranked(self.rows[:the.label])
 
 
  return loop(todo, done)

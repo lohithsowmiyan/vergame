@@ -4,6 +4,7 @@ from scipy.stats import skew, kurtosis
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
+from sklearn.metrics.pairwise import euclidean_distances
 
 # Sample data (replace with your dataset)
 data = pd.DataFrame({
@@ -41,11 +42,42 @@ def reduce_noise(data):
     
     return data_pca
 
+
+def compute_sparsity_metrics(df):
+    # 1. Missing value sparsity
+    missing_sparsity = df.isnull().sum().sum() / (df.shape[0] * df.shape[1])
+    
+    # 2. Zero-value sparsity for numeric columns
+    numeric_df = df.select_dtypes(include=[np.number])
+    zero_sparsity = (numeric_df == 0).sum().sum() / (numeric_df.shape[0] * numeric_df.shape[1])
+    
+    # 3. Density-based sparsity (using average distances between points)
+    scaled_numeric = StandardScaler().fit_transform(numeric_df.fillna(0))
+    distances = euclidean_distances(scaled_numeric)
+    avg_distance = np.mean(distances[distances > 0])
+    
+    # 4. Feature-wise sparsity
+    feature_sparsity = {
+        col: 1 - len(df[col].unique()) / len(df)
+        for col in df.columns
+    }
+    
+    return {
+        'missing_sparsity': missing_sparsity,
+        'zero_sparsity': zero_sparsity,
+        'density_sparsity': avg_distance,
+        'feature_sparsity': feature_sparsity,
+        'overall_sparsity': (missing_sparsity + zero_sparsity) / 2
+    }
+
 # Quantify Noise
-df = pd.read_csv("data/config/SS-N.csv")
-noise_metrics = quantify_noise(df)
-print("Noise Metrics:\n", noise_metrics)
+df = pd.read_csv("data/config/SS-M.csv")
+# noise_metrics = quantify_noise(df)
+# print("Noise Metrics:\n", noise_metrics)
+print(compute_sparsity_metrics(df))
 
 # Reduce Noise
-cleaned_data = reduce_noise(data)
-print("\nCleaned Data (First 5 Rows):\n", cleaned_data.head())
+# cleaned_data = reduce_noise(data)
+# print("\nCleaned Data (First 5 Rows):\n", cleaned_data.head())
+
+

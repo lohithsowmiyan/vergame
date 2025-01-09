@@ -3,21 +3,24 @@ from math import exp,log,cos,sqrt,pi
 
 
 diversity_weights = [
-    1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,  # Diversity (first 10)
+    1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,  # Diversity (first 10)
     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,  # Zero for next
-    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0   # Zero for last
+       # Zero for last
 ]
 
 uncertainty_weights = [
     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,  # Zero for first
-    1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,  # Uncertainty (next 10)
-    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0   # Zero for last
+      # Uncertainty (next 10)
+    1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,   # Zero for last
+    1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
 ]
 
 certainty_weights = [
+    0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0 ,
     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,  # Zero for first
-    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,  # Zero for next
-    1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0   # Certainty (last 10)
+    0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,  # Zero for next
+      # Certainty (last 10)
 ]
 
 
@@ -28,6 +31,7 @@ class Game:
         self.exploit = lambda B,R : B-R
         self.explore = lambda B, R :  (exp(B) + exp(R))/ (1E-30 + abs(exp(B) - exp(R)))
         self.diverse = lambda B,R : 1 / (abs(B + R) + 1e-30)
+        
         self.a = 0.33
         self.b = 0.33
         self.c = 0.34
@@ -84,8 +88,10 @@ class Game:
 
 def smos():
     "try different sample sizes"
-    policies = dict(exploit = lambda B,R: B-R,
-                    EXPLORE = lambda B,R: (e**B + e**R)/abs(e**B - e**R + 1E-30))
+    policies = dict(exploit = lambda B,R, p: B-R,
+                    EXPLORE = lambda B,R, p: (e**B + e**R)/abs(e**B - e**R + 1E-30),
+                    adapt = lambda B,R, p : abs(B + R *(1-p)) / (B *(1-p) - R + 1E-30)
+                    )
     repeats=20
     
     d = DATA(csv("data/config/SS-X.csv"))
@@ -93,20 +99,20 @@ def smos():
     rxs={}
     rxs["baseline"] = SOME(txt=f"baseline,{len(d.rows)}",inits=[d2h(d,row) for row in d.rows])
     the.GuessFaster = True
-    for last in [10,20,30,40]:
-        the.Last= last
-        guess = lambda : clone(d,random.choices(d.rows, k=last),rank=True).rows[0]
-        rx=f"random,{last}"
-        rxs[rx] = SOME(txt=rx, inits=[d2h(d,guess()) for _ in range(repeats)])
+    # for last in [10,20,30,40]:
+    #     the.Last= last
+    #     guess = lambda : clone(d,random.choices(d.rows, k=last),rank=True).rows[0]
+    #     rx=f"random,{last}"
+    #     rxs[rx] = SOME(txt=rx, inits=[d2h(d,guess()) for _ in range(repeats)])
         
-        for what,how in  policies.items():
+    #     for what,how in  policies.items():
             
-            rx=f"{what}/{the.Last}"
-            rxs[rx] = SOME(txt=rx)
-            for _ in range(repeats):
-                btw(".")
-                rxs[rx].add(d2h(d,smo(d,how)[0]))
-            btw("\n")
+    #         rx=f"{what}/{the.Last}"
+    #         rxs[rx] = SOME(txt=rx)
+    #         for _ in range(repeats):
+    #             btw(".")
+    #             rxs[rx].add(d2h(d,smo(d,how)[0]))
+    #         btw("\n")
 
     rx = f"Game/30"
     rxs[rx] = SOME(txt = rx)

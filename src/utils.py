@@ -499,13 +499,13 @@ def smo(i:data, score=lambda B,R,I,N: B-R, callBack=lambda x:x ):
     callBack([d2h(i,r) for r in lst])
     return lst
 
-  def _guess(todo:rows, done:rows) -> rows:
+  def _guess(todo:rows, done:rows, p) -> rows:
     "Divide `done` into `best`,`rest`. Use those to guess the order of unlabelled rows. Called by `_smo1()`."
     cut  = int(.5 + len(done) ** the.N)
     best = clone(i, done[:cut])
     rest = clone(i, done[cut:])
     key  = lambda r: score(loglikes(best, r, len(done), 2),
-                           loglikes(rest, r, len(done), 2))
+                           loglikes(rest, r, len(done), 2), p)
 
 
     
@@ -516,13 +516,15 @@ def smo(i:data, score=lambda B,R,I,N: B-R, callBack=lambda x:x ):
 
   def _smo1(todo:rows, done:rows, most) -> rows:
     "Guess the `top`  unlabeled row, add that to `done`, resort `done`, and repeat"
+    itr = 1
     for k in range(the.Last - the.label):
       if len(todo) < 3: break
-      top,*todo = _guess(todo, done)
+      top,*todo = _guess(todo, done, itr/the.Last)
       most = top if  most ==[] or d2h(i,top) < d2h(i,most) else most
       #print(d2h(i,top))
       done += [top]
       done = _ranked(done)
+      itr += 1
     return done,most
 
   random.shuffle(i.rows)

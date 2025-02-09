@@ -5,7 +5,7 @@ import getpass
 import shutil
 import tempfile
 from langchain_huggingface.llms import HuggingFacePipeline
-from langchain_openai import OpenAI
+from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, BitsAndBytesConfig
 
@@ -110,7 +110,7 @@ class API_LLM(LLM):
             return ChatGoogleGenerativeAI(
                         model= self.model_name,
                         temperature= self.temperature,  
-                        max_tokens= self.max_tokens, 
+                        #max_tokens= self.max_tokens, 
                         top_p= self.top_p
                     )
 
@@ -118,38 +118,14 @@ class API_LLM(LLM):
             if "OPENAI_API_KEY" not in os.environ:
                 print("Unable to find the API key please enter here:")
                 os.environ["OPENAI_API_KEY"] = getpass.getpass()
-            return OpenAI(
+            return ChatOpenAI(
                         model= self.model_name,
                         temperature= self.temperature,  
-                        max_tokens= self.max_tokens, 
+                        #max_tokens= self.max_tokens, 
                         top_p= self.top_p
                 )
 
 
-from langchain_core.prompts import ChatPromptTemplate, FewShotChatMessagePromptTemplate
-from src.utils.ezr import rows,row,data, cols, NUM, SYM, correlation
 
-def rows_to_markdown(table:data):
-    """
-    Converts a 2D list (table) to Markdown table format.
 
-    :param table: List of lists where each sublist represents a row in the table.
-    :return: String representing the table in Markdown format.
-    """
-    if not table:
-        return ""
-
-    col_widths = [max(len(str(cell)) for cell in col) for col in zip(*table)]
-    header = "| " + " | ".join(str(cell).ljust(col_widths[i]) for i, cell in enumerate(table[0])) + " |"
-    separator = "|-" + "-|-".join("-" * width for width in col_widths) + "-|"
-    rows = [
-        "| " + " | ".join(str(cell).ljust(col_widths[i]) for i, cell in enumerate(row)) + " |"
-        for row in table[1:]
-    ]
-    markdown_table = "\n".join([header, separator] + rows)
-    
-    return markdown_table
-
-class Template:
-
-    def __init__(self, )
+        

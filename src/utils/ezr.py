@@ -168,7 +168,9 @@ def add2col(i:col, x:any, n=1) -> any:
   if x != "?":
     i.n += n
     if i.this is NUM: _add2num(i,x,n)
-    else: i.has[x] = i.has.get(x,0) + n
+    else: 
+      i.has[x] = i.has.get(x,0) + n
+
   return x
 
 def _add2num(i:num, x:any, n:int) -> None:
@@ -379,6 +381,8 @@ def chebyshev(i:data, r:row) -> float:
 
 def dists(i:data, r1:row, r2:row) -> float:
   "Distances between two rows."
+  # for c in i.cols.x:
+  #   print(c.at)
   n = sum(dist(c, r1[c.at], r2[c.at])**the.p for c in i.cols.x)
   return (n / len(i.cols.x))**(1/the.p)
 
@@ -406,18 +410,18 @@ def where(i:data, dendo, row):
   else:
     return dendo.here
 
-def dendogram(i:data, region:rows=None, stop=None, before=None):
+def dendogram(i:data, region:rows=None, stop=None, before=None, lvl = 0):
   region = region or i.rows
-  stop = stop or 2*len(region)**the.N
+  stop = stop or 4
   node = o(this="dendogram",here=clone(i,region),
            reference=None, enough=0,
            left=None,right=None)
-  if len(region) > stop:
+  if lvl < stop:
     lefts,rights,left,right  = half(i,region, False, before)
     node.enough = dists(i,right,rights[0])
     node.reference=right
-    node.left=dendogram(i,lefts, stop, left)
-    node.right=dendogram(i,rights,stop, right) 
+    node.left=dendogram(i,lefts, stop, left, lvl+1)
+    node.right=dendogram(i,rights,stop, right, lvl+1) 
   return node 
 
 def showDendo(node,lvl=0):
@@ -427,6 +431,14 @@ def showDendo(node,lvl=0):
     if node.left: showDendo(node.left,lvl+1)
     if node.right: showDendo(node.right,lvl+1)
 
+def leafs(node, lvl = 0, centroids = []):
+    if not (node.left or node.right): centroids.append(random.choice(node.here.rows))
+    if node.left: leafs(node.left, lvl+1, centroids)
+    if node.right: leafs(node.right, lvl+1, centroids)
+    return centroids
+    
+
+
 
 def branch(i:data, region:rows=None, stop=None, rest=None, evals=1, before=None):
   "Recursively bi-cluster `region`, recurse only down the best half."
@@ -434,9 +446,9 @@ def branch(i:data, region:rows=None, stop=None, rest=None, evals=1, before=None)
   if not stop: random.shuffle(region)
   stop = stop or 2*len(region)**the.N
   rest = rest or []
-  if len(region) > stop:
+  if evals <= stop:
     lefts,rights,left,_  = half(i,region, True, before)
-    return branch(i,lefts, stop, rest+rights, evals+1, left)
+    return branch(i,lefts, stop, rest+rights, evals+1)
   else:
     return region,rest,evals
 
@@ -499,13 +511,13 @@ def smo(i:data, score=lambda B,R,I,N: B-R, callBack=lambda x:x ):
     callBack([d2h(i,r) for r in lst])
     return lst
 
-  def _guess(todo:rows, done:rows, p) -> rows:
+  def _guess(todo:rows, done:rows) -> rows:
     "Divide `done` into `best`,`rest`. Use those to guess the order of unlabelled rows. Called by `_smo1()`."
     cut  = int(.5 + len(done) ** the.N)
     best = clone(i, done[:cut])
     rest = clone(i, done[cut:])
     key  = lambda r: score(loglikes(best, r, len(done), 2),
-                           loglikes(rest, r, len(done), 2), p)
+                           loglikes(rest, r, len(done), 2), len(done) - the.label, the.Last)
 
 
     
@@ -516,22 +528,20 @@ def smo(i:data, score=lambda B,R,I,N: B-R, callBack=lambda x:x ):
 
   def _smo1(todo:rows, done:rows, most) -> rows:
     "Guess the `top`  unlabeled row, add that to `done`, resort `done`, and repeat"
-    itr = 1
     for k in range(the.Last - the.label):
       if len(todo) < 3: break
-      top,*todo = _guess(todo, done, itr/the.Last)
+      top,*todo = _guess(todo, done)
       most = top if  most ==[] or d2h(i,top) < d2h(i,most) else most
       #print(d2h(i,top))
       done += [top]
       done = _ranked(done)
-      itr += 1
     return done,most
 
   random.shuffle(i.rows)
   most = [] # remove any  bias from older runs
   initial = _ranked(i.rows[:the.label])
   done,most = _smo1(i.rows[the.label:],initial, most)
-  return done
+  return done, [i, [most], initial[:2], initial[2:], done]
 
 
 #--------- --------- --------- --------- --------- --------- --------- --------- ---------
@@ -788,7 +798,7 @@ def main() -> None:
 def run(s:str) -> int:
   "Reset the seed. Run `eg.s()`, then restore old settings. Return '1' on failure. Called by `main()`."
   reset = {k:v for k,v in the.__dict__.items()}
-  random.seed(the.seed)
+  #random.seed(the.seed)
   out = _run1(s)
   for k,v in reset.items(): the.__dict__[k]=v
   return out
@@ -914,8 +924,9 @@ class eg:
     data1 = DATA(csv(the.train))
     row =data1.rows[0]
     print(row)
-    d = dendogram(data1)
-    showDendo(d)
+    d = dendogram(data1, stop = 4)
+    print(leafs(d))
+    #showDendo(d)
     print(mids(where(data1,d,row)))
 
   def smo():

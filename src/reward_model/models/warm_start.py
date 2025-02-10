@@ -1,5 +1,5 @@
 from src.utils.ezr import *
-from src.language import load_model
+from src.llm import load_model
 from dotenv import load_dotenv
 from src.prompts import load_prompt
 from src.utils.results import save_results_txt

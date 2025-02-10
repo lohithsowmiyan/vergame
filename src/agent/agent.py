@@ -5,6 +5,9 @@ from src.agent.environment import RowSelectionEnv
 import os
 import tiktoken
 from src.agent.prompts import *
+from src.utils.ezr import *
+from src.utils.helper import rows_to_markdown
+from src.llm import load_model
 
 
 
@@ -63,18 +66,12 @@ class LeapFrogAgent:
 
         # Initialize the reaction LLM if not provided.
         if react_llm is None:
-            from openai_llm import OpenAI  # Replace with your actual import.
-            self.llm = OpenAI(
-                temperature=0.7,
-                model_name="text-davinci-003",
-                model_kwargs={"stop": "\n"},
-                openai_api_key=os.environ['OPENAI_API_KEY']
-            )
+            self.llm = load_model(args, name = 'gemini').get_pipeline()
         else:
             self.llm = react_llm
 
         # Initialize tokenizer for token counting.
-        self.enc = tiktoken.encoding_for_model("text-davinci-003")
+        # self.enc = tiktoken.encoding_for_model("text-davinci-003")
 
     def run(self, reset=True) -> None:
         if reset:
@@ -113,10 +110,10 @@ class LeapFrogAgent:
         # Assumes the environment provides an is_terminated() method.
         return self.env.is_terminated()
 
-    def is_truncated(self) -> bool:
-        # Checks if the environment is truncated or if the prompt is too long.
-        prompt_length = len(self.enc.encode(self._build_agent_prompt()))
-        return self.env.is_truncated() or (prompt_length > 3896)
+    # def is_truncated(self) -> bool:
+    #     # Checks if the environment is truncated or if the prompt is too long.
+    #     prompt_length = len(self.enc.encode(self._build_agent_prompt()))
+    #     return self.env.is_truncated() or (prompt_length > 3896)
 
     def reset(self) -> None:
         self.scratchpad = ''
@@ -149,15 +146,9 @@ class LeapFrogReflectionAgent(LeapFrogAgent):
 
         # Initialize the reflection LLM if not provided.
         if reflect_llm is None:
-            from openai_llm import OpenAI  # Replace with your actual import.
-            self.reflect_llm = OpenAI(
-                temperature=0,
-               
-                model_name="text-davinci-003",
-                openai_api_key=os.environ['OPENAI_API_KEY']
-            )
+            self.llm = load_model(args, name = 'gemini').get_pipeline()
         else:
-            self.reflect_llm = reflect_llm
+            self.llm = reflect_llm
 
     def run(self, reset=True) -> None:
         # If the episode is terminated/truncated and the current action is not correct,
@@ -202,3 +193,27 @@ class LeapFrogReflectionAgent(LeapFrogAgent):
             line = lines[ind]
             lines[ind] = line.split(':')[0] + ': ...'
         return '\n'.join(lines)
+
+
+
+def run_agent(args):
+    d = DATA(csv(args.dataset))
+    tot_rows = random.choices(d.rows, k = 50)
+    labelled_indices = random.choices(range(0,50), k = 10)
+
+    #print(d.cols.names)
+
+    x_len = len(tot_rows[0]) - len(d.cols.y)
+    table = [
+    ['S.No'] + [col for col in d.cols.names[:x_len]] + ['Score']
+    ] + [
+        ([i + 1] + r[:x_len] + [round((1 - chebyshev(d, r)) * 100, 2) if i in labelled_indices
+        else "unlabelled"])
+        
+        for i, r in enumerate(tot_rows)
+    ]
+
+    print(rows_to_markdown(table))
+
+    envi = RowSelectionEnv(tot_rows, labelled_indices)
+

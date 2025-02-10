@@ -7,7 +7,7 @@ class RowSelectionEnv(gym.Env):
     def __init__(self, dataset, labeled_indices):
         super(RowSelectionEnv, self).__init__()
 
-        self.dataset = dataset
+        self.dataset = np.array(dataset)
         self.labeled_indices = set(labeled_indices)
         self.unlabeled_indices = set(range(len(dataset))) - self.labeled_indices
 
@@ -18,7 +18,7 @@ class RowSelectionEnv(gym.Env):
         self.action_space = spaces.MultiDiscrete([len(dataset)] * 4)
 
         # Observation space: Entire dataset (could be feature vectors)
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(len(dataset), dataset.shape[1]), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(len(dataset), self.dataset.shape[1]), dtype=np.float32)
 
         self.reset()
 
@@ -51,6 +51,9 @@ class RowSelectionEnv(gym.Env):
 
     def render(self, mode="human"):
         print(f"Total Cost: {self.total_cost}")
+
+    def get_env_state(self):
+        return self.dataset, self.labeled_indices
 
     def close(self):
         pass

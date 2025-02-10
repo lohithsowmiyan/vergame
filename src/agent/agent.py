@@ -4,22 +4,7 @@ from enum import Enum
 from src.agent.environment import RowSelectionEnv
 import os
 import tiktoken
-
-
-class ReflexionStrategy(Enum):
-    """
-    NONE: No reflection
-    LAST_ATTEMPT: Use last reasoning trace in context 
-    REFLEXION: Apply reflexion to the next reasoning trace 
-    LAST_ATTEMPT_AND_REFLEXION: Use last reasoning trace in context and apply reflexion to the next reasoning trace 
-    """
-    NONE = 'base'
-    LAST_ATTEMPT = 'last_trial' 
-    REFLEXION = 'reflexion'
-    LAST_ATTEMPT_AND_REFLEXION = 'last_trial_and_reflexion'
-
-
-
+from src.agent.prompts import *
 
 
 
@@ -31,33 +16,7 @@ def format_reflections(reflections) -> str:
     """Join a list of reflection strings into one text block."""
     return "\n".join(reflections)
 
-# Dummy prompt templates and examples. Replace these with your actual templates.
-row_selection_agent_prompt = (
-    "{examples}\n"
-    "Task: {question}\n"
-    "Current scratchpad:\n{scratchpad}\n"
-    "What is your thought and action for selecting the rows?"
-)
-row_selection_reflect_agent_prompt = (
-    "{examples}\n"
-    "Task: {question}\n"
-    "Previous reflections:\n{reflections}\n"
-    "Current scratchpad:\n{scratchpad}\n"
-    "What is your next thought and action?"
-)
-row_selection_reflect_prompt = (
-    "Reflect on the previous attempts for the task: {question}\n"
-    "Scratchpad:\n{scratchpad}\n"
-    "Provide a reflection on how to improve the row selection."
-)
 
-ROW_SELECTION_REACT_EXAMPLES = (
-    "Example: When selecting rows, prefer labeled rows over unlabeled ones to avoid extra cost."
-)
-ROW_SELECTION_REFLECT_EXAMPLES = (
-    "Reflection Example: If too many unlabeled rows were selected (thus incurring high cost), "
-    "try to focus on selecting from the labeled rows in the next attempt."
-)
 
 # =============================================================================
 # LLM Interface Stubs
@@ -76,7 +35,7 @@ ROW_SELECTION_REFLECT_EXAMPLES = (
 # RowSelectionReactAgent
 # =============================================================================
 
-class RowSelectionReactAgent:
+class LeapFrogAgent:
     """
     A ReAct agent for a row selection task.
     
@@ -91,9 +50,10 @@ class RowSelectionReactAgent:
                  agent_prompt: str = row_selection_agent_prompt,
                  react_llm=None,  # An LLM instance (e.g., OpenAI with text-davinci-003).
                  ) -> None:
+
         self.task_description = task_description
         self.agent_prompt = agent_prompt
-        self.react_examples = ROW_SELECTION_REACT_EXAMPLES
+        self.react_examples = ROW_SELECTION_EXAMPLES
         self.env = env
         self.env.reset()
         self.reset()  # Initialize the scratchpad and step counter.
@@ -105,8 +65,7 @@ class RowSelectionReactAgent:
         if react_llm is None:
             from openai_llm import OpenAI  # Replace with your actual import.
             self.llm = OpenAI(
-                temperature=0,
-                max_tokens=100,
+                temperature=0.7,
                 model_name="text-davinci-003",
                 model_kwargs={"stop": "\n"},
                 openai_api_key=os.environ['OPENAI_API_KEY']
@@ -125,12 +84,6 @@ class RowSelectionReactAgent:
             self.step()
 
     def step(self) -> None:
-        # ---- Think: Generate a chain-of-thought.
-        self.scratchpad += f'\nThought {self.curr_step}:'
-        thought = self.prompt_agent()
-        self.scratchpad += ' ' + thought
-        print(self.scratchpad.split('\n')[-1])
-
         # ---- Act: Generate an action (e.g., the row indices to select).
         self.scratchpad += f'\nAction {self.curr_step}:'
         action = self.prompt_agent()
@@ -173,13 +126,9 @@ class RowSelectionReactAgent:
         # Assumes the environment provides an is_correct() method to check the action quality.
         return self.env.is_correct()
 
-# =============================================================================
-# RowSelectionReactReflectAgent
-# =============================================================================
-
-class RowSelectionReactReflectAgent(RowSelectionReactAgent):
+class LeapFrogReflectionAgent(LeapFrogAgent):
     """
-    A self-reflecting ReAct agent for the row selection task.
+    A self-reflecting  agent for the row selection task.
     
     This agent uses a separate reflection LLM to reflect on its chain-of-thought
     when the environment terminates (or the prompt is too long) and the current
@@ -203,7 +152,7 @@ class RowSelectionReactReflectAgent(RowSelectionReactAgent):
             from openai_llm import OpenAI  # Replace with your actual import.
             self.reflect_llm = OpenAI(
                 temperature=0,
-                max_tokens=250,
+               
                 model_name="text-davinci-003",
                 openai_api_key=os.environ['OPENAI_API_KEY']
             )
@@ -215,7 +164,7 @@ class RowSelectionReactReflectAgent(RowSelectionReactAgent):
         # perform a reflection step.
         if (self.is_terminated() or self.is_truncated()) and not self.is_correct():
             self.reflect()
-        super().run(reset)
+        super().run(reset) 
 
     def reflect(self) -> None:
         reflection = self.prompt_reflection()

@@ -1,15 +1,11 @@
 from src.utils.ezr import *
 from src.llm import load_model
 from dotenv import load_dotenv
-from src.prompts import load_prompt
-from src.utils.results import save_results_txt
-from graph import visualize2 
-from src.prompts.synthetic import SYNTHETIC
+from src.reward_model.prompts.synthetic import SYNTHETIC
 from statistics import mode
 import warnings
 import json
 import time
-from src.models.smo import SMO
 import numpy as np
 from sklearn.cluster import KMeans
 

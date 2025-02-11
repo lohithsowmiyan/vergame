@@ -1,4 +1,4 @@
-from src.prompts.prompts import *
+from src.reward_model.prompts.prompts import *
 
 prompts = {
     "data/misc/auto93.csv" : Auto93Template(),

@@ -215,5 +215,5 @@ def run_agent(args):
 
     print(rows_to_markdown(table))
 
-    envi = RowSelectionEnv(tot_rows, labelled_indices)
+    envi = RowSelectionEnv(tot_rows, labelled_indices,args)
 

@@ -3,7 +3,7 @@ from src.utils.ezr import rows,row,data, cols, NUM, SYM, correlation
 from src.utils.helper import rows_to_markdown
 
 
-class SYNTHETIC():
+class SYNTHETIC:
 
     def __init__(self, i:data, best: rows, rest:rows):
         self.meta = {

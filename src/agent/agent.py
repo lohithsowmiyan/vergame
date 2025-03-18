@@ -11,209 +11,263 @@ from src.llm import load_model
 
 
 
-def format_step(text: str) -> str:
-    """Simple formatter to strip extra whitespace from LLM responses."""
-    return text.strip()
-
-def format_reflections(reflections) -> str:
-    """Join a list of reflection strings into one text block."""
-    return "\n".join(reflections)
-
-
-
-# =============================================================================
-# LLM Interface Stubs
-# =============================================================================
-# (Replace these stubs with your actual LLM classes or imports.)
-# For example, you might be using a class like OpenAI from your LLM library.
-#
-# from your_llm_library import OpenAI, BaseLLM, PromptTemplate
-
-# For this example, we assume that calling the LLM object with a prompt returns a string.
-# Example:
-#    response = self.llm(prompt_text)
-# where self.llm might be an instance of OpenAI with preconfigured parameters.
-
-# =============================================================================
-# RowSelectionReactAgent
-# =============================================================================
-
-class LeapFrogAgent:
-    """
-    A ReAct agent for a row selection task.
-    
-    The agent uses an LLM to generate a chain-of-thought (its "thoughts")
-    and to decide on an action (e.g., which 4 rows to select). The LLM output is
-    appended to a scratchpad. This agent runs in a loop until the environment
-    signals termination or the prompt grows too long.
-    """
-    def __init__(self,
-                 task_description: str,
-                 env,  # An instance of your custom row selection environment.
-                 agent_prompt: str = row_selection_agent_prompt,
-                 react_llm=None,  # An LLM instance (e.g., OpenAI with text-davinci-003).
-                 ) -> None:
-
-        self.task_description = task_description
-        self.agent_prompt = agent_prompt
-        self.react_examples = ROW_SELECTION_EXAMPLES
-        self.env = env
-        self.env.reset()
-        self.reset()  # Initialize the scratchpad and step counter.
-        self.truncated = False
-        self.reward = 0
-        self.terminated = False
-
-        # Initialize the reaction LLM if not provided.
-        if react_llm is None:
-            self.llm = load_model(args, name = 'gemini').get_pipeline()
-        else:
-            self.llm = react_llm
-
-        # Initialize tokenizer for token counting.
-        # self.enc = tiktoken.encoding_for_model("text-davinci-003")
-
-    def run(self, reset=True) -> None:
-        if reset:
-            self.env.reset()
-            self.reset()
-        while not (self.is_truncated() or self.is_terminated()):
-            self.step()
-
-    def step(self) -> None:
-        # ---- Act: Generate an action (e.g., the row indices to select).
-        self.scratchpad += f'\nAction {self.curr_step}:'
-        action = self.prompt_agent()
-        self.scratchpad += ' ' + action
-        print(self.scratchpad.split('\n')[-1])
-
-        # ---- Observe: Execute the action in the environment.
-        self.scratchpad += f'\nObservation {self.curr_step}: '
-        # Assume env.step returns: observation, reward, terminated, truncated, curr_step.
-        observation, self.reward, self.terminated, self.truncated, self.curr_step = self.env.step(action)
-        self.scratchpad += observation
-        print(self.scratchpad.split('\n')[-1])
-
-    def prompt_agent(self) -> str:
-        prompt_text = self._build_agent_prompt()
-        response = self.llm(prompt_text)
-        return format_step(response)
-
-    def _build_agent_prompt(self) -> str:
-        return self.agent_prompt.format(
-            examples=self.react_examples,
-            question=self.task_description,
-            scratchpad=self.scratchpad
-        )
-
-    def is_terminated(self) -> bool:
-        # Assumes the environment provides an is_terminated() method.
-        return self.env.is_terminated()
-
-    # def is_truncated(self) -> bool:
-    #     # Checks if the environment is truncated or if the prompt is too long.
-    #     prompt_length = len(self.enc.encode(self._build_agent_prompt()))
-    #     return self.env.is_truncated() or (prompt_length > 3896)
-
-    def reset(self) -> None:
-        self.scratchpad = ''
-        self.curr_step = 1
-
-    def is_correct(self) -> bool:
-        # Assumes the environment provides an is_correct() method to check the action quality.
-        return self.env.is_correct()
-
-class LeapFrogReflectionAgent(LeapFrogAgent):
-    """
-    A self-reflecting  agent for the row selection task.
-    
-    This agent uses a separate reflection LLM to reflect on its chain-of-thought
-    when the environment terminates (or the prompt is too long) and the current
-    action is not deemed correct.
-    """
-    def __init__(self,
-                 task_description: str,
-                 env,
-                 agent_prompt: str = row_selection_reflect_agent_prompt,
-                 reflect_prompt: str = row_selection_reflect_prompt,
-                 react_llm=None,
-                 reflect_llm=None,
-                 ) -> None:
-        super().__init__(task_description, env, agent_prompt, react_llm)
-        self.reflect_prompt = reflect_prompt
-        self.reflect_examples = ROW_SELECTION_REFLECT_EXAMPLES
+class LeapfrogLLM:
+    """Wrapper for LLM to handle prompt engineering and reflection"""
+    def __init__(self, llm_model, reflection_model=None):
+        self.llm = llm_model
+        self.reflection_model = reflection_model if reflection_model else llm_model
         self.reflections = []
-
-        # Initialize the reflection LLM if not provided.
-        if reflect_llm is None:
-            self.llm = load_model(args, name = 'gemini').get_pipeline()
-        else:
-            self.llm = reflect_llm
-
-    def run(self, reset=True) -> None:
-        # If the episode is terminated/truncated and the current action is not correct,
-        # perform a reflection step.
-        if (self.is_terminated() or self.is_truncated()) and not self.is_correct():
-            self.reflect()
-        super().run(reset) 
-
-    def reflect(self) -> None:
-        reflection = self.prompt_reflection()
-        self.reflections.append(reflection)
-        print("Reflection:", reflection)
-
-    def prompt_reflection(self) -> str:
-        prompt_text = self._build_reflection_prompt()
-        response = self.reflect_llm(prompt_text)
-        return format_step(response)
-
-    def _build_reflection_prompt(self) -> str:
-        return self.reflect_prompt.format(
-            examples=self.reflect_examples,
-            question=self.task_description,
-            scratchpad=self._format_scratchpad()
-        )
-
-    def _build_agent_prompt(self) -> str:
-        # Incorporate reflections into the agent prompt.
-        return self.agent_prompt.format(
-            examples=self.react_examples,
-            reflections=format_reflections(self.reflections),
-            question=self.task_description,
-            scratchpad=self.scratchpad
-        )
-
-    def _format_scratchpad(self) -> str:
-        # Truncate or summarize the scratchpad if it grows too long.
-        lines = self.scratchpad.split('\n')
-        lines_by_tokens = sorted(lines, key=lambda x: len(self.enc.encode(x)))
-        while len(self.enc.encode('\n'.join(lines))) > 1600:
-            # Replace the longest line with a summary (here, we simply shorten it).
-            ind = lines.index(lines_by_tokens.pop(-1))
-            line = lines[ind]
-            lines[ind] = line.split(':')[0] + ': ...'
-        return '\n'.join(lines)
-
-
-
-def run_agent(args):
-    d = DATA(csv(args.dataset))
-    tot_rows = random.choices(d.rows, k = 50)
-    labelled_indices = random.choices(range(0,50), k = 10)
-
-    #print(d.cols.names)
-
-    x_len = len(tot_rows[0]) - len(d.cols.y)
-    table = [
-    ['S.No'] + [col for col in d.cols.names[:x_len]] + ['Score']
-    ] + [
-        ([i + 1] + r[:x_len] + [round((1 - chebyshev(d, r)) * 100, 2) if i in labelled_indices
-        else "unlabelled"])
+        # Instead of tiktoken, use a simple character count estimate
+        self.token_estimation_ratio = 3.5  # ~3.5 characters per token on average
+    
+    def estimate_tokens(self, text):
+        """Estimate token count from text length"""
+        return int(len(text) / self.token_estimation_ratio)
+    
+    def check_prompt_length(self, prompt, max_tokens=8000):
+        """Check if prompt is too long for the model"""
+        est_tokens = self.estimate_tokens(prompt)
+        if est_tokens > max_tokens:
+            # Truncate the history in the prompt
+            return True
+        return False
+    
+    def generate_better_point(self, selected_rows, history, reflect=True):
+        """Generate a better point based on selected rows and history"""
+        prompt = self._build_prompt(selected_rows, history)
         
-        for i, r in enumerate(tot_rows)
-    ]
+        # Check if prompt is too long and truncate if necessary
+        if self.check_prompt_length(prompt):
+            # Use fewer history items in the prompt
+            truncated_history = history[-3:] if len(history) > 3 else history
+            prompt = self._build_prompt(selected_rows, truncated_history)
+        
+        response = self.llm(prompt)
+        
+        # If reflection is enabled and we have history
+        if reflect and history:
+            reflection_prompt = self._build_reflection_prompt(selected_rows, history, response)
+            
+            # Check if reflection prompt is too long
+            if self.check_prompt_length(reflection_prompt):
+                truncated_history = history[-3:] if len(history) > 3 else history
+                reflection_prompt = self._build_reflection_prompt(selected_rows, truncated_history, response)
+            
+            reflection = self.reflection_model(reflection_prompt)
+            self.reflections.append(reflection)
+            
+            # Use the reflection to improve the next generation
+            improved_prompt = self._build_improved_prompt(selected_rows, history[-3:] if len(history) > 3 else history, reflection)
+            response = self.llm(improved_prompt)
+        
+        return self._parse_response(response)
+    
+    def _build_prompt(self, selected_rows, history):
+        """Build the prompt for the LLM"""
+        prompt = f"""
+        You are assisting with active learning for tabular data. 
+        
+        I have randomly selected 4 data points from my dataset:
+        {self._format_rows(selected_rows)}
+        
+        """
+        
+        if history:
+            # Include the most recent history entries first (most relevant)
+            prompt += f"""
+            Previously, I've evaluated these points (ordered from oldest to newest):
+            {self._format_history(history)}
+            """
+        
+        prompt += """
+        Please generate a new data point that you believe would be better than the randomly selected points.
+        The goal is to minimize the "distance to heaven" metric. Lower values are better.
+        
+        Return your answer as a numpy array in the format: [feature1, feature2, ..., featureN]
+        """
+        
+        return prompt
+    
+    def _build_reflection_prompt(self, selected_rows, history, previous_response):
+        """Build a prompt for reflection"""
+        prompt = f"""
+        Let's reflect on our previous point generation.
+        
+        The randomly selected points were:
+        {self._format_rows(selected_rows)}
+        
+        The point I generated was:
+        {previous_response}
+        
+        Looking at the history of points and their scores:
+        {self._format_history(history)}
+        
+        What patterns do you notice in the better-performing points?
+        What features seem to correlate with lower "distance to heaven" scores?
+        What could we do to generate an even better point next time?
+        
+        Please provide a thoughtful reflection that can guide our next point generation.
+        """
+        return prompt
+    
+    def _build_improved_prompt(self, selected_rows, history, reflection):
+        """Build an improved prompt incorporating reflection"""
+        prompt = f"""
+        You are assisting with active learning for tabular data. 
+        
+        I have randomly selected 4 data points from my dataset:
+        {self._format_rows(selected_rows)}
+        
+        Based on our previous attempts, here's what we've learned:
+        {reflection}
+        
+        Previously, I've evaluated these points:
+        {self._format_history(history)}
+        
+        Please generate a new data point that incorporates these reflections.
+        The goal is to minimize the "distance to heaven" metric. Lower values are better.
+        
+        Return your answer as a numpy array in the format: [feature1, feature2, ..., featureN]
+        """
+        return prompt
+    
+    def _format_rows(self, rows):
+        """Format rows for display in prompt"""
+        result = ""
+        for i, row in enumerate(rows):
+            result += f"Point {i+1}: {row.tolist()}\n"
+        return result
+    
+    def _format_history(self, history):
+        """Format history for display in prompt"""
+        result = ""
+        for i, (input_rows, output_point, score) in enumerate(history):
+            result += f"Iteration {i+1}:\n"
+            result += f"  Generated point: {output_point.tolist()}\n"
+            result += f"  Score: {score}\n"
+        return result
+    
+    def _parse_response(self, response):
+        """Parse the LLM's response into a numpy array"""
+        try:
+            # Use regex to extract array-like structures
+            array_pattern = r'\[([^\]]+)\]'
+            match = re.search(array_pattern, response)
+            
+            if match:
+                array_text = match.group(1)
+                # Clean up the array text
+                values = [float(x.strip()) for x in array_text.split(',')]
+                return np.array(values)
+            else:
+                # Fall back to basic extraction
+                response = response.strip()
+                numbers = re.findall(r"[-+]?\d*\.\d+|\d+", response)
+                if numbers:
+                    return np.array([float(n) for n in numbers])
+                else:
+                    raise ValueError("No numbers found in response")
+        except:
+            # Return random values if parsing fails
+            print("Failed to parse response, using random values")
+            feature_count = len(self.reflections[0].split(',')) if self.reflections else 5
+            return np.random.rand(feature_count)
 
-    print(rows_to_markdown(table))
 
-    envi = RowSelectionEnv(tot_rows, labelled_indices,args)
+class LeapfrogAgent:
+    """Agent that uses the leapfrog method for active learning"""
+    def __init__(self, env, llm, max_iterations=15, early_stop_threshold=0.01, patience=3):
+        self.env = env
+        self.llm = llm
+        self.max_iterations = max_iterations
+        self.early_stop_threshold = early_stop_threshold
+        self.patience = patience  # Number of iterations to wait for improvement
+        self.history = []
+        self.best_scores = []
+    
+    def run(self):
+        """Run the leapfrog algorithm"""
+        observation = self.env.reset()
+        iterations_without_improvement = 0
+        
+        for i in range(self.max_iterations):
+            print(f"\n--- Iteration {i+1}/{self.max_iterations} ---")
+            
+            # Generate a better point using the LLM
+            action = self.llm.generate_better_point(
+                self.env.dataset[np.random.choice(self.env.n, 4, replace=False)],
+                self.history,
+                reflect=(i > 0)  # Only reflect after the first iteration
+            )
+            
+            # Take a step in the environment
+            next_observation, reward, done, info = self.env.step(action)
+            
+            # Store the result
+            self.history.append((info['selected_rows'], action, -reward))
+            self.best_scores.append(self.env.best_score)
+            
+            # Render the environment
+            self.env.render()
+            
+            # Check for early stopping
+            if i > 0 and self.best_scores[-1] >= self.best_scores[-2]:
+                iterations_without_improvement += 1
+                print(f"No improvement for {iterations_without_improvement} iterations")
+            else:
+                iterations_without_improvement = 0
+                print("New best score achieved!")
+            
+            if iterations_without_improvement >= self.patience:
+                print(f"Early stopping triggered after {self.patience} iterations without improvement")
+                break
+            
+            # Update observation
+            observation = next_observation
+            
+            if done:
+                break
+        
+        print("\n=== Final Results ===")
+        print(f"Best point found: {self.env.best_point}")
+        print(f"Best score achieved: {self.env.best_score}")
+        print(f"Total iterations: {self.env.current_iteration}")
+        
+        return self.env.best_point, self.env.best_score
+    
+    def _should_early_stop(self):
+        """Check if we should stop early"""
+        if len(self.best_scores) < self.patience:
+            return False
+        
+        # Check if there's been no improvement for 'patience' iterations
+        return all(self.best_scores[-i-1] >= self.best_scores[-i-2] 
+                   for i in range(self.patience-1))
+
+
+
+
+
+# Example usage
+def agent(args):
+    # Create a synthetic dataset
+    i = DATA(csv(args.dataset))
+    
+    llm_wrapper = LeapfrogLLM(
+        llm_model = load_model(args, name = args.llm).get_pipeline()
+    )
+    
+    # Create the environment
+    env = ActiveLearningEnv(
+        dataset=dataset,
+        llm=llm_wrapper,
+        max_iterations=15
+    )
+    
+    # Create and run the agent
+    agent = LeapfrogAgent(env, llm_wrapper)
+    best_point, best_score = agent.run()
+    
+    print(f"Final best point: {best_point}")
+    print(f"Final best score: {best_score}")
 

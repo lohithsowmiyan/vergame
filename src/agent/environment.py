@@ -1,87 +1,120 @@
 import gym
-from gym import spaces
 import numpy as np
-import itertools
-from src.utils.ezr import DATA,csv, chebyshev
-from src.reward_model.models.warm_start import WARM_FEW_API
+from gym import spaces
+from src.utils.ezr import *
 
-class RowSelectionEnv(gym.Env):
-    def __init__(self, dataset, labeled_indices, args):
-        super(RowSelectionEnv, self).__init__()
-
-        self.dataset = np.array(dataset)
-        self.labeled_indices = set(labeled_indices)
-        self.unlabeled_indices = set(range(len(dataset))) - self.labeled_indices
-
-        self.total_cost = 0  # Cost tracker
-        self.max_cost = 20   # Max cost limit
-        self.i = DATA(csv(args.dataset))
-        self.cur_best = min([chebyshev(self.i, r) if _ in labeled_indices else 1 for _,r  in enumerate(dataset)])
-        print("best initially", self.cur_best)
+class ActiveLearningEnv(gym.Env):
+    def __init__(self, dataset, llm, max_iterations=15):
+        super(ActiveLearningEnv, self).__init__()
+        self.dataset = dataset
+        self.n = len(dataset)
+        self.llm = llm
+        self.selected_points = []  # Stores (input, output, score)
+        self.current_iteration = 0
+        self.max_iterations = max_iterations
+        self.best_score = float('inf')
+        self.best_point = None
         
-        # Action space: Choosing 4 indices from 100 rows
-        self.action_space = spaces.MultiDiscrete([len(dataset)] * 4)
-
-        # Observation space: Entire dataset (could be feature vectors)
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(len(dataset), self.dataset.shape[1]), dtype=np.float32)
-
-        self.reset()
-
-    def reset(self):
-        self.total_cost = 0  # Reset cost
-        return self.dataset  # Return the dataset as observation
-
+        # Define feature dimensionality from dataset
+        self.feature_dim = dataset.shape[1]
+        
+        # Action space: Define the space for generating a better point
+        self.action_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.feature_dim,))
+        
+        # Observation space: Dataset + past results
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.n, self.feature_dim))
+    
     def step(self, action):
-        selected_rows = set(action)  # Ensure unique row selections
-
-
-
-
-        # Compute additional cost for choosing unlabeled rows
-        unlabeled_selected = len([idx for idx in selected_rows if idx not in self.labeled_indices])
-        cost = unlabeled_selected  # +1 per unlabeled row\
-
-        self.labeled_indices.update(selected_rows)
-
-
-        # If adding cost exceeds max_cost, terminate early with heavy penalty
-        if self.total_cost + cost > self.max_cost:
-            return self.dataset, -100, True, {"cost": self.total_cost}  # High penalty for exceeding cost
-
-        self.total_cost += cost  # Update cost
-
-        # Compute reward using another agent (dummy score function for now)
-        reward = self.evaluate_selection(selected_rows)
-
-        done = self.total_cost >= self.max_cost  # Terminate when max cost is reached
-        return self.dataset, reward, done, {"cost": self.total_cost} 
-
-    def evaluate_selection(self, selected_rows, args):
-        """function to score selected rows (replace with real scoring model)"""
-        i = DATA(csv(args.dataset))
-
-        done = [dataset[i] for i in selected_rows]
-        done = set(tuple(_) for _ in done)
-        todo = set((tuple(_) for _ in i.rows)) - done
-        done, new_done, todo = WARM_FEW_API(i, args,  list(todo), list(done), method = 'LLM')
-
-        if chebyshev(i, new_done[0]) < self.cur_best:
-            return 10
-        else:
-            return -5
-
-
-
-
-
-
+        # Process the action (in this case, action is the LLM's response)
+        # The action here is the textual response from the LLM
         
-
-    def render(self, mode="human"):
-        print(f"Total Cost: {self.total_cost}")
-
-    def get_env_state(self):
-        return self.dataset, self.labeled_indices
-
-    def close(self):
-        pass
+        # Randomly select 4 rows from the dataset
+        selected_indices = np.random.choice(self.n, 4, replace=False)
+        selected_rows = self.dataset[selected_indices]
+        
+        # Process the LLM's response to extract the better point
+        better_point = self._parse_llm_response(action)
+        
+        # Evaluate using distance_to_heaven
+        score = d2h(self.dataset,better_point)
+        
+        # Store result
+        self.selected_points.append((selected_rows, better_point, score))
+        
+        # Update best score and point if needed
+        if score < self.best_score:
+            self.best_score = score
+            self.best_point = better_point
+        
+        # Reward: Negative of the distance (lower is better)
+        # We could also use improvement over previous best
+        reward = -score
+        
+        # Alternative reward: Improvement over previous best
+        # if len(self.selected_points) > 1:
+        #     prev_score = self.selected_points[-2][2]
+        #     reward = prev_score - score  # Positive if improved, negative if worsened
+        
+        # Increment iteration counter
+        self.current_iteration += 1
+        
+        # Done condition
+        done = self.current_iteration >= self.max_iterations
+        
+        # Information dictionary
+        info = {
+            'iteration': self.current_iteration,
+            'score': score,
+            'best_score': self.best_score,
+            'selected_rows': selected_rows
+        }
+        
+        # Current state combines dataset and history
+        observation = self._get_observation()
+        
+        return observation, reward, done, info
+    
+    def reset(self):
+        self.selected_points = []
+        self.current_iteration = 0
+        self.best_score = float('inf')
+        self.best_point = None
+        return self._get_observation()
+    
+    def _get_observation(self):
+        # Combine dataset and history into an observation
+        # This could be formatted as a prompt for the LLM
+        return self.dataset
+    
+    def _parse_llm_response(self, response):
+        # Parse the LLM's textual response into a data point
+        # This is a placeholder - you'll need to implement actual parsing
+        try:
+            # Assuming response is a string that can be parsed into a numpy array
+            # This will depend on your LLM's output format
+            return np.array(eval(response))
+        except:
+            # If parsing fails, return a random point as fallback
+            print("Failed to parse LLM response, using random point")
+            return np.random.rand(self.feature_dim)
+    
+    def render(self, mode='human'):
+        if mode == 'human':
+            print(f"Iteration: {self.current_iteration}/{self.max_iterations}")
+            print(f"Current best score: {self.best_score}")
+            print(f"Best point: {self.best_point}")
+            print(f"Total points evaluated: {len(self.selected_points)}")
+        return None
+    
+    def is_terminated(self):
+        return self.current_iteration >= self.max_iterations
+    
+    def is_truncated(self):
+        # Implement any additional termination conditions
+        return False
+    
+    def is_correct(self):
+        # Define what makes a solution "correct"
+        # For example, if score is below a threshold
+        threshold = 0.1  # Adjust based on your problem
+        return self.best_score < threshold

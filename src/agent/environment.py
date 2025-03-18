@@ -3,11 +3,13 @@ import numpy as np
 from gym import spaces
 from src.utils.ezr import *
 
+
 class ActiveLearningEnv(gym.Env):
-    def __init__(self, dataset, llm, max_iterations=15):
+    def __init__(self, i, llm, max_iterations=15):
         super(ActiveLearningEnv, self).__init__()
-        self.dataset = dataset
-        self.n = len(dataset)
+        self.i = i
+        self.dataset = np.array(i.rows)
+        self.n = len(i.rows)
         self.llm = llm
         self.selected_points = []  # Stores (input, output, score)
         self.current_iteration = 0
@@ -16,7 +18,7 @@ class ActiveLearningEnv(gym.Env):
         self.best_point = None
         
         # Define feature dimensionality from dataset
-        self.feature_dim = dataset.shape[1]
+        self.feature_dim = self.dataset.shape[1]
         
         # Action space: Define the space for generating a better point
         self.action_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.feature_dim,))
@@ -30,7 +32,7 @@ class ActiveLearningEnv(gym.Env):
         
         # Randomly select 4 rows from the dataset
         selected_indices = np.random.choice(self.n, 4, replace=False)
-        selected_rows = self.dataset[selected_indices]
+        
         
         # Process the LLM's response to extract the better point
         better_point = self._parse_llm_response(action)
@@ -39,7 +41,7 @@ class ActiveLearningEnv(gym.Env):
         score = d2h(self.dataset,better_point)
         
         # Store result
-        self.selected_points.append((selected_rows, better_point, score))
+        self.selected_points.append((better_point, score))
         
         # Update best score and point if needed
         if score < self.best_score:

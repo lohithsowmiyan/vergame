@@ -1,13 +1,14 @@
 import re, string, os
 from typing import List, Union, Literal
 from enum import Enum
-from src.agent.environment import RowSelectionEnv
+from src.agent.environment import ActiveLearningEnv
 import os
 import tiktoken
 from src.agent.prompts import *
 from src.utils.ezr import *
 from src.utils.helper import rows_to_markdown
 from src.llm import load_model
+import numpy as np
 
 
 
@@ -42,7 +43,7 @@ class LeapfrogLLM:
             truncated_history = history[-3:] if len(history) > 3 else history
             prompt = self._build_prompt(selected_rows, truncated_history)
         
-        response = self.llm(prompt)
+        response = self.llm.invoke(prompt).content
         
         # If reflection is enabled and we have history
         if reflect and history:
@@ -58,7 +59,7 @@ class LeapfrogLLM:
             
             # Use the reflection to improve the next generation
             improved_prompt = self._build_improved_prompt(selected_rows, history[-3:] if len(history) > 3 else history, reflection)
-            response = self.llm(improved_prompt)
+            response = self.llm.invoke(improved_prompt).content
         
         return self._parse_response(response)
     
@@ -249,7 +250,7 @@ class LeapfrogAgent:
 
 
 # Example usage
-def agent(args):
+def agents(args):
     # Create a synthetic dataset
     i = DATA(csv(args.dataset))
     
@@ -259,7 +260,7 @@ def agent(args):
     
     # Create the environment
     env = ActiveLearningEnv(
-        dataset=dataset,
+        i=i,
         llm=llm_wrapper,
         max_iterations=15
     )

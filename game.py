@@ -2,9 +2,9 @@ from src.utils.config import parse_arguments
 from src.utils.ezr import *
 from dotenv import load_dotenv
 from src.utils.results import save_results_txt
-from src.agent.agent import run_agent
 import warnings
 import time
+from src.agent.agent import agents
 
 
 from src.bayesian.gpm import gpms
@@ -30,16 +30,6 @@ def m(i, n, shift):
     normalized_values = norm(exp_values, shift)
     return normalized_values[i]
 
-def agents(args):
-
-    repeats=1
-    d = DATA(csv(args.dataset))
-    for guessFaster in [True]:
-        for start in ['LLM']:
-            for _ in range(repeats):
-                btw(".")
-                run_agent(args)
-                #rxs[rx].add(chebyshev(d,res[0]))
 
 
 def warms(args):

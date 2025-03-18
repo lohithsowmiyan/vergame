@@ -32,16 +32,16 @@ class ActiveLearningEnv(gym.Env):
         
         # Randomly select 4 rows from the dataset
         selected_indices = np.random.choice(self.n, 4, replace=False)
-        
+        selected_rows = self.dataset[selected_indices]
         
         # Process the LLM's response to extract the better point
         better_point = self._parse_llm_response(action)
         
         # Evaluate using distance_to_heaven
-        score = d2h(self.dataset,better_point)
+        score = d2h(self.i,better_point)
         
         # Store result
-        self.selected_points.append((better_point, score))
+        self.selected_points.append((selected_rows, better_point, score))
         
         # Update best score and point if needed
         if score < self.best_score:

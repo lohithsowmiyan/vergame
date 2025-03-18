@@ -54,7 +54,7 @@ class LeapfrogLLM:
                 truncated_history = history[-3:] if len(history) > 3 else history
                 reflection_prompt = self._build_reflection_prompt(selected_rows, truncated_history, response)
             
-            reflection = self.reflection_model(reflection_prompt)
+            reflection = self.reflection_model.invoke(reflection_prompt).content
             self.reflections.append(reflection)
             
             # Use the reflection to improve the next generation
